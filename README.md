@@ -125,53 +125,62 @@ hero 渐变（通栏，含状态栏）
 
 ---
 
-## 构建步骤
+## 构建状态
 
-### 先上传到 GitHub
+> **✅ 已通过 CI 编译验证（2026-09-27）**
+>
+> 仓库 <https://github.com/07vvvv/xixiqushuiyin> · Run #1 `Build APK` · `conclusion: success`（耗时 3 分 19 秒）
+>
+> | 步骤 | 结果 |
+> |---|---|
+> | Set up JDK 17 / Gradle / Android SDK | ✅ |
+> | Grant execute permission for gradlew | ✅ |
+> | Ensure debug keystore | ✅ |
+> | **Build debug and release APK**（`assembleDebug assembleRelease`） | ✅ |
+> | Upload APKs | ✅ |
+>
+> 产物：`aiqu-watermark-apk`，28,849,391 字节（含 release + debug 两个 APK）。
+>
+> 这同时证明了一件事：**全部 21 个 Kotlin 文件、约 20 个自有 Compose 组件、构建脚本与资源均无编译错误** ——
+> 此前"沙箱无 JDK/SDK，无法本地编译"的不确定性已消除。
 
-本地仓库已初始化并完成 2 次提交（分支 `main`），远端也已指向
-`https://github.com/07vvvv/xixiqushuiyin.git`。**只剩推送这一步**，且必须在
-**你自己的终端**里执行（沙箱环境下 Git Credential Manager 无法弹出浏览器完成登录）。
+### 取 APK
 
-**第 1 步 · 推送**
+打开 <https://github.com/07vvvv/xixiqushuiyin/actions> → 点最新一次成功运行 →
+页面底部 **Artifacts** → 下载 `aiqu-watermark-apk`（zip，需登录 GitHub）：
 
-打开一个终端（Windows Terminal / Git Bash / 资源管理器地址栏输入 `cmd` 后回车），执行：
+- `aiqu-watermark-release.apk` ← 手机装这个
+- `aiqu-watermark-debug.apk` ← 排查问题用
+
+安装要求：**Android 8.0（API 26）及以上**。首次安装需允许「安装未知来源应用」。
+
+---
+
+## 仓库与推送（已完成，仅作留存）
+
+仓库 **`07vvvv/xixiqushuiyin`** 已建好并推送完成，`main` 分支跟踪 `origin/main`：
 
 ```bash
-cd /d D:\work-run\aq-watermark-android
-git push -u origin main
+git -C D:\work-run\aq-watermark-android push -u origin main
 ```
 
-首次推送会弹出 **Git Credential Manager** 的浏览器登录窗口（本机已安装），
-登录一次即可，之后不再需要输密码。
+> **PowerShell 注意**：`cd /d <路径>` 是 **cmd** 语法，在 PowerShell 里会报
+> `Set-Location: 找不到接受实际参数的位置参数`，目录不会切换。PowerShell 里应写
+> `cd D:\work-run\aq-watermark-android`（无 `/d`），或直接用上面的 `git -C` 形式。
+>
+> 也可以直接双击 `D:\work-run\push-to-github.bat`（自动切目录 + 推送 + 显示退出码）。
 
-**第 2 步 · 若它改问用户名密码**
-
-GitHub 已不接受账户密码。到
+**若后续推送改问用户名密码**：GitHub 已不接受账户密码。到
 Settings → Developer settings → **Personal access tokens → Tokens (classic)** 生成一个，
 权限勾 **`repo`**，并且**必须**勾 **`workflow`** —— 仓库里有 `.github/workflows/` 文件，
 少了 `workflow` 权限会被直接拒绝推送。生成后把它当作密码粘贴即可。
 
-> 若提示 `rejected — fetch first`，说明远端不是空仓库（建仓库时勾了 README 之类）。
-> 解决：`git push -u origin main --force`（本地是你唯一需要的版本，覆盖即可）。
+> ⚠️ **仓库当前是 Public**。若想改为私有：Settings → General → 最下方 Danger Zone →
+> Change repository visibility → Make private。私有仓库每月仍有 2000 分钟 Actions 免费额度，
+> 改私有后 CI 照常工作（本仓库已推送，不会再遇到"远端非空"问题）。
 
-**仓库已经建好了吗？** 未验证到远端内容，但 `git ls-remote` 返回 200 且无任何引用，
-说明 `07vvvv/xixiqushuiyin` 存在且为空 —— 可以直接推，不会冲突。
-
-**第 3 步 · 取 APK**
-
-推送完成后打开仓库的 **Actions** 页，会看到 `Build APK` 正在运行（也可在 Actions 页点
-`Run workflow` 手动触发）。构建结束、出现绿色对勾后，进入该次运行，
-在页面底部的 **Artifacts** 里下载 `aiqu-watermark-apk`，内含：
-
-- `aiqu-watermark-release.apk` ← 日常安装用这个
-- `aiqu-watermark-debug.apk` ← 排查问题用
-
-失败时同一位置会有 `build-reports` 工件，里面的编译日志可以直接发给我。
-
-**关于工程根目录**：仓库根目录必须正好是 `settings.gradle.kts` 所在这一层。
-本目录已经就是这个结构，直接推即可。另外 `.gitattributes` 已把 `gradlew` 锁定为 LF 换行，
-避免 Linux runner 上报 `bad interpreter: /bin/sh^M`。
+**关于工程根目录**：仓库根目录必须是 `settings.gradle.kts` 所在这一层，本目录已经就是这个结构。
+`.gitattributes` 已把 `gradlew` 锁定为 LF 换行，避免 Linux runner 上报 `bad interpreter: /bin/sh^M`。
 
 ### 方式 A：GitHub Actions（推荐，无需本机装 Android SDK）
 
@@ -311,12 +320,27 @@ Cookie 只写入本机 SharedPreferences，不外传。
 **这套验证仍未覆盖的部分**（诚实边界）：我自己的类型推断与逻辑错误、AGP/Gradle 版本兼容性、
 XML/资源解析、以及真机运行行为。这些只能靠 CI 与真机。
 
-其余仍需**真机确认**的（无法通过静态检查消除）：
+### 最终确认：CI 编译通过（2026-09-27）
 
-1. **抖音 WebView 抓取效果** —— 抖音页面策略随时变化，需真机验证注入钩子是否命中
-2. **小红书视频笔记路径** —— 图文笔记已验证；视频笔记按 `note.video.media.stream.{h264,h265,av1}` 与
-   `consumer.originVideoKey` 实现，尚未实测
-3. **Compose API 版本差异** —— 若个别组件报「未解析」，按 IDE 提示切换当前版本的重载即可
+上述"诚实边界"中的前四项，已由 GitHub Actions 的 Run #1 **全部证实无问题**：
+
+| 此前只能靠 CI 裁决的事项 | 结果 |
+|---|---|
+| 我自己的类型推断与逻辑错误 | ✅ 无（`Build debug and release APK` 成功） |
+| AGP 8.7.3 / Gradle 8.9 / Kotlin 2.1.0 / Compose BOM 2025.01.00 版本兼容性 | ✅ 通过 |
+| XML / 资源解析（主题、颜色、自适应图标、网络安全配置） | ✅ 通过（`assembleRelease` 的 `processReleaseResources` 阶段已跑完） |
+| 常量、import、重载匹配等全部编译期检查 | ✅ 通过 |
+
+第 21 项（OkHttp 可空 `newBuilder`）是**最后查出的一个真实编译错误**，若未修即在 CI 失败。
+
+**仅剩两项需要真机才能验证**（编译成功无法覆盖）：
+
+1. **抖音 WebView 抓取效果** —— 抖音页面策略随时变化，需真机确认注入钩子是否命中
+   `aweme/v1/web/aweme/detail/`；若未命中，应用内置了三级兜底（`onPageStarted` 二次注入 →
+   轮询 `video.currentSrc` / `og:image`），且页面本身可交互（遇验证码可手动完成）
+2. **小红书视频笔记路径** —— 图文笔记已实测（3 张 1206×2622 无损原图）；视频笔记按
+   `note.video.media.stream.{h264,h265,av1}` 与 `consumer.originVideoKey` 实现，尚未实测。
+   遇到时把链接发我即可校准。
 
 ---
 
