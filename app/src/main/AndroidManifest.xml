@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+        API 28 及以下保存到相册需要写外部存储；API 29+ 走 MediaStore 插入，无需任何存储权限。
+        因此这里用 maxSdkVersion 限定，避免在新系统上申请多余权限。
+    -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <application
+        android:name=".AqWatermarkApp"
+        android:allowBackup="false"
+        android:hardwareAccelerated="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AqWatermark"
+        android:usesCleartextTraffic="false"
+        tools:targetApi="35">
+
+    <!--
+        注意：MainActivity 的 theme 必须是 Theme.AqWatermark.Starting。
+        原因：installSplashScreen() 读取的是**当前 Activity 的 theme**，
+        若这里写成 Theme.AqWatermark，窗口上就没有 windowSplashScreen* 属性，
+        在 API 31+ 闪屏图标不会生效，在 API 26-30 的兼容实现下也会失效。
+        postSplashScreenTheme 会在闪屏结束后切回 Theme.AqWatermark。
+    -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AqWatermark.Starting"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 抖音真实浏览器解析：单独一个 Activity 承载 WebView -->
+        <activity
+            android:name=".ui.douyin.DouyinCaptureActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:theme="@style/Theme.AqWatermark" />
+
+    </application>
+
+</manifest>

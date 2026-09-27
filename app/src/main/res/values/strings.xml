@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">爱去水印</string>
+
+    <!-- 抖音浏览器解析页 -->
+    <string name="douyin_capture_title">抖音解析</string>
+    <string name="douyin_capture_status_init">正在启动浏览器…</string>
+    <string name="douyin_capture_status_loading">正在加载页面…</string>
+    <string name="douyin_capture_status_waiting">正在等待播放地址…</string>
+    <string name="douyin_capture_status_found">已捕获地址</string>
+    <string name="douyin_capture_hint">页面由系统浏览器加载，抖音自己的 SDK 会生成合法请求，应用只读取结果。若出现验证码或需要点击播放，手动完成后会自动继续。</string>
+    <string name="douyin_capture_manual">我已看到视频，取地址</string>
+    <string name="douyin_capture_cancel">取消</string>
+    <string name="douyin_capture_no_url">缺少要解析的抖音链接</string>
+    <string name="douyin_capture_timeout">仍未捕获到地址。可以点「取地址」，或回到页面点一下视频播放后再试。</string>
+    <string name="douyin_capture_manual_toast">还没取到地址，请先在页面上点一下视频播放</string>
+</resources>

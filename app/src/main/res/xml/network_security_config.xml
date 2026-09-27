@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    允许若干媒体 CDN 走明文 HTTP。
+    原因：这些平台返回的部分媒体地址确实是 http://，Android 9+ 默认禁止明文流量，
+    否则图片/视频会加载失败。这里只对必要的媒体域名放开，不使用全局 usesCleartextTraffic。
+
+    注意：解析出的地址已在 AppViewModel 中统一「https 优先、原始 http 作为备用」，
+    因此本白名单是第二道保险，而不是唯一依赖。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- 小红书 -->
+        <domain includeSubdomains="true">xhscdn.com</domain>
+        <domain includeSubdomains="true">xiaohongshu.com</domain>
+        <!-- 抖音 -->
+        <domain includeSubdomains="true">douyinvod.com</domain>
+        <domain includeSubdomains="true">douyinpic.com</domain>
+        <domain includeSubdomains="true">douyin.com</domain>
+        <domain includeSubdomains="true">iesdouyin.com</domain>
+        <domain includeSubdomains="true">byteimg.com</domain>
+        <domain includeSubdomains="true">bytedance.com</domain>
+        <domain includeSubdomains="true">bytecdntp.com</domain>
+        <domain includeSubdomains="true">ixigua.com</domain>
+        <domain includeSubdomains="true">snssdk.com</domain>
+        <domain includeSubdomains="true">volces.com</domain>
+        <!-- 哔哩哔哩 -->
+        <domain includeSubdomains="true">bilivideo.com</domain>
+        <domain includeSubdomains="true">bilivideo.cn</domain>
+        <domain includeSubdomains="true">hdslb.com</domain>
+        <domain includeSubdomains="true">bilibili.com</domain>
+    </domain-config>
+</network-security-config>

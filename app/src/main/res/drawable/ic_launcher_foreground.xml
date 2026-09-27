@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    自适应图标前景：水滴 + 一道斜杠（象征「去水印」）
+    画布 108x108，安全区为中心 66x66，因此图形控制在 21..87 范围内。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 水滴主体 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30 C54,30 39,49 39,60 a15,15 0 0,0 30,0 C69,49 54,30 54,30 Z" />
+
+    <!-- 斜杠：表示「去除」 -->
+    <path
+        android:fillColor="#FF2E63"
+        android:pathData="M40.2,74.4 L67.8,40.6 L72.4,44.2 L44.8,78 L40.2,74.4 Z" />
+</vector>

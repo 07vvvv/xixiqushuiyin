@@ -1,0 +1,100 @@
+name: Build APK
+
+# 说明：
+#   1) 本工程使用 Gradle Wrapper（gradlew），由 CI 自动下载 Gradle 8.9；
+#   2) release 构建复用 debug 签名（见 app/build.gradle.kts），
+#      因此无需在仓库里配置任何签名密钥即可产出可直接安装的 APK；
+#   3) 产物为两个 APK：debug（带调试信息，便于排查）与 release（体积更小，日常使用）。
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Assemble APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      # 镜像上通常已含所需 SDK，这里只做兜底；失败不阻断构建
+      - name: Ensure Android SDK components
+        run: |
+          SDKMANAGER="$(command -v sdkmanager || echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager")"
+          if [ -x "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+            "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" || true
+          else
+            echo "sdkmanager not found, relying on preinstalled SDK"
+          fi
+
+      # release 复用 debug 签名，需要 debug keystore；AGP 通常会自动生成，
+      # 这里显式确保存在，避免不同 AGP/镜像版本行为差异。
+      - name: Ensure debug keystore
+        run: |
+          KS="$HOME/.android/debug.keystore"
+          if [ ! -f "$KS" ]; then
+            mkdir -p "$HOME/.android"
+            keytool -genkeypair -v \
+              -keystore "$KS" \
+              -storepass android -keypass android \
+              -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          else
+            echo "debug keystore already present"
+          fi
+
+      - name: Build debug and release APK
+        run: ./gradlew assembleDebug assembleRelease --stacktrace
+
+      - name: Collect APKs
+        run: |
+          mkdir -p out
+          find app/build/outputs/apk -name '*.apk' -type f -print
+          cp app/build/outputs/apk/debug/app-debug.apk        out/aiqu-watermark-debug.apk
+          cp app/build/outputs/apk/release/app-release.apk    out/aiqu-watermark-release.apk 2>/dev/null \
+            || cp app/build/outputs/apk/release/app-release-unsigned.apk out/aiqu-watermark-release.apk
+          ls -lh out
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: aiqu-watermark-apk
+          path: out/*.apk
+          if-no-files-found: error
+
+      - name: Upload build reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-reports
+          path: |
+            app/build/reports/**
+            app/build/outputs/logs/**
+            **/build/reports/**
+          if-no-files-found: ignore

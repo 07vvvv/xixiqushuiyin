@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 闪屏图标：白色水滴（闪屏底色为品牌色） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,26 C54,26 37,50 37,62 a17,17 0 0,0 34,0 C71,50 54,26 54,26 Z" />
+</vector>
