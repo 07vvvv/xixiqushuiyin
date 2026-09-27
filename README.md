@@ -129,32 +129,34 @@ hero 渐变（通栏，含状态栏）
 
 ### 先上传到 GitHub
 
-本地仓库已经初始化并完成首次提交（分支 `main`），你只需要在网页上建一个**空仓库**再推上去。
+本地仓库已初始化并完成 2 次提交（分支 `main`），远端也已指向
+`https://github.com/07vvvv/xixiqushuiyin.git`。**只剩推送这一步**，且必须在
+**你自己的终端**里执行（沙箱环境下 Git Credential Manager 无法弹出浏览器完成登录）。
 
-**第 1 步 · 建空仓库**
+**第 1 步 · 推送**
 
-打开 <https://github.com/new>：
-
-- **Repository name**：随意，例如 `aiqu-watermark`
-- **Public / Private**：建议选 **Private**。私有仓库每月有 2000 分钟 Actions 免费额度，
-  每次 Android 构建约 3–6 分钟，够用几百次；而且这类工具放公开仓库没必要。
-- **不要**勾选 "Add a README" / "Add .gitignore" / "Choose a license" ——
-  必须建成**空仓库**，否则推送会因为两边都有提交而被拒绝。
-
-**第 2 步 · 关联并推送**（在 `D:\work-run\aq-watermark-android` 下执行）
+打开一个终端（Windows Terminal / Git Bash / 资源管理器地址栏输入 `cmd` 后回车），执行：
 
 ```bash
-git remote add origin https://github.com/<你的用户名>/<仓库名>.git
+cd /d D:\work-run\aq-watermark-android
 git push -u origin main
 ```
 
 首次推送会弹出 **Git Credential Manager** 的浏览器登录窗口（本机已安装），
 登录一次即可，之后不再需要输密码。
 
-> 如果它改问账号密码：GitHub 已不接受账户密码，需要到
-> Settings → Developer settings → Personal access tokens 生成一个经典 token，
-> 权限勾 **`repo`** 并且**必须**勾 **`workflow`** —— 因为仓库里有 `.github/workflows/` 文件，
-> 少了 `workflow` 权限会被拒绝推送。
+**第 2 步 · 若它改问用户名密码**
+
+GitHub 已不接受账户密码。到
+Settings → Developer settings → **Personal access tokens → Tokens (classic)** 生成一个，
+权限勾 **`repo`**，并且**必须**勾 **`workflow`** —— 仓库里有 `.github/workflows/` 文件，
+少了 `workflow` 权限会被直接拒绝推送。生成后把它当作密码粘贴即可。
+
+> 若提示 `rejected — fetch first`，说明远端不是空仓库（建仓库时勾了 README 之类）。
+> 解决：`git push -u origin main --force`（本地是你唯一需要的版本，覆盖即可）。
+
+**仓库已经建好了吗？** 未验证到远端内容，但 `git ls-remote` 返回 200 且无任何引用，
+说明 `07vvvv/xixiqushuiyin` 存在且为空 —— 可以直接推，不会冲突。
 
 **第 3 步 · 取 APK**
 
