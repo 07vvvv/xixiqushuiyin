@@ -14,6 +14,12 @@
         <!-- 小红书 -->
         <domain includeSubdomains="true">xhscdn.com</domain>
         <domain includeSubdomains="true">xiaohongshu.com</domain>
+        <!--
+            短链域名必须放行：App 内「复制链接」得到的往往是 http://xhslink.com/...
+            若被明文策略拦掉，短链还原会直接抛异常，表现为「未能识别小红书笔记 ID」
+            这类误导性报错（适配器里已同时做 https 升级，这里是第二道保险）。
+        -->
+        <domain includeSubdomains="true">xhslink.com</domain>
         <!-- 抖音 -->
         <domain includeSubdomains="true">douyinvod.com</domain>
         <domain includeSubdomains="true">douyinpic.com</domain>
@@ -30,5 +36,7 @@
         <domain includeSubdomains="true">bilivideo.cn</domain>
         <domain includeSubdomains="true">hdslb.com</domain>
         <domain includeSubdomains="true">bilibili.com</domain>
+        <domain includeSubdomains="true">b23.tv</domain>
+        <domain includeSubdomains="true">bili2233.cn</domain>
     </domain-config>
 </network-security-config>

@@ -116,21 +116,57 @@ object Http {
         }
     }
 
-    /** 只取一次重定向目标，不跟随（用于还原短链并保留其查询参数） */
-    fun resolveRedirect(url: String, ua: String = MOBILE_UA, referer: String? = null): String {
-        try {
+    /**
+     * 还原短链，**自动跟随多跳**（默认最多 5 跳）。
+     *
+     * 为什么必须多跳：平台短链常是「短链 → 短链 → 详情页」的多级跳转
+     * （小红书 `xhslink.com/a/xxx` 就可能先跳到 `xhslink.com/m/xxx`）。
+     * 只取一跳会拿到仍是短链的中间地址，导致后续提取不到笔记 ID / 作品 ID，
+     * 表现为「未能识别小红书笔记 ID」这类误导性报错。
+     *
+     * 每一步都不跟随重定向（自身循环），以便**保留中间地址的查询参数**
+     * （小红书的 `xsec_token` 就在查询串里，丢了就拿不到数据）。
+     */
+    fun resolveRedirect(
+        url: String,
+        ua: String = MOBILE_UA,
+        referer: String? = null,
+        maxHops: Int = 5,
+    ): String {
+        var current = url
+        for (hop in 0 until maxHops) {
+            val (finalUrl, nextUrl) = resolveOneHop(current, ua, referer)
+            if (nextUrl.isBlank() || nextUrl == current) return finalUrl
+            current = nextUrl
+        }
+        return current
+    }
+
+    /**
+     * 单跳：不跟随重定向，返回 (本次请求的最终地址, Location 解析出的下一跳)。
+     *
+     * 刻意用「返回值」而不是在 lambda 里改外部变量 —— 被 lambda 捕获的局部变量
+     * 即使是 `String?` 且已判空，Kotlin 也不会对它做智能转换，直接赋值给 `String`
+     * 会编译失败。返回 Pair 可以彻底避开这类问题。
+     */
+    private fun resolveOneHop(url: String, ua: String, referer: String?): Pair<String, String> {
+        return try {
             noRedirectClient.newCall(buildRequest(url, ua, referer, null).build()).execute().use { r ->
-                val loc = r.header("Location")
-                if (!loc.isNullOrBlank()) {
-                    // 注意：OkHttp 的 HttpUrl.newBuilder(link: String) 返回的是**可空** Builder
-                    // （链接非法时返回 null），因此必须用安全调用，不能直接 .build()。
-                    val resolved = r.request.url.newBuilder(loc)?.build()
-                    if (resolved != null) return resolved.toString()
+                val finalUrl = r.request.url.toString()
+                val nextUrl = if (r.code in 300..399) {
+                    r.header("Location")?.let { loc ->
+                        // HttpUrl.newBuilder(link: String) 返回**可空** Builder（链接非法时为 null），
+                        // 必须用安全调用，不能直接 .build()
+                        r.request.url.newBuilder(loc)?.build()?.toString()
+                    } ?: ""
+                } else {
+                    ""
                 }
-                return r.request.url.toString()
+                finalUrl to nextUrl
             }
         } catch (e: Exception) {
-            return url
+            // 还原失败就退回原地址，由调用方给出「无法识别 ID」并附带该地址，便于定位
+            url to ""
         }
     }
 

@@ -83,14 +83,15 @@ fun HomeScreen(vm: AppViewModel) {
     }
 
     // 需要浏览器解析抖音时，拉起抓取页
-    LaunchedEffect(vm.pendingDouyinUrl) {
-        val url = vm.pendingDouyinUrl
-        if (!url.isNullOrBlank()) {
+    LaunchedEffect(vm.pendingDouyin) {
+        val req = vm.pendingDouyin
+        if (req != null && req.url.isNotBlank()) {
             vm.consumePendingDouyin()
             // 启动前先清空中转站，避免上一次的残余结果被误用
             DouyinCaptureHolder.clear()
             val intent = Intent(context, DouyinCaptureActivity::class.java)
-                .putExtra(DouyinCaptureActivity.EXTRA_URL, url)
+                .putExtra(DouyinCaptureActivity.EXTRA_URL, req.url)
+                .putExtra(DouyinCaptureActivity.EXTRA_AWEME_ID, req.awemeId)
                 .putExtra(DouyinCaptureActivity.EXTRA_COOKIE, vm.settings.douyinCookie)
             douyinLauncher.launch(intent)
         }

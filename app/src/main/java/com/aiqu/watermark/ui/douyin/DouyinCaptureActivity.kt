@@ -54,6 +54,18 @@ class DouyinCaptureActivity : Activity() {
 
     private var targetUrl: String = ""
     private var cookie: String = ""
+
+    /**
+     * 目标作品的 aweme_id。抖音 PC 页是**信息流**，会自动连播推荐视频，
+     * 页面里随时可能同时存在多条作品的详情响应 —— 只有拿到目标 id 才能判断
+     * 「现在抓到的是不是用户要的那一条」。为空时（短链还原失败）无法校验，
+     * 会在状态栏明确提示用户自行确认。
+     */
+    private var targetId: String = ""
+
+    /** 注入脚本与目标 id 绑定，因此按实例生成一次而不是写成常量 */
+    private lateinit var hookScript: String
+
     private var finished = false
     private var attempts = 0
     private val maxAttempts = 150 // 约 120 秒
@@ -65,6 +77,7 @@ class DouyinCaptureActivity : Activity() {
 
         targetUrl = intent.getStringExtra(EXTRA_URL) ?: ""
         cookie = intent.getStringExtra(EXTRA_COOKIE) ?: ""
+        targetId = (intent.getStringExtra(EXTRA_AWEME_ID) ?: "").trim()
 
         if (targetUrl.isBlank()) {
             Toast.makeText(this, R.string.douyin_capture_no_url, Toast.LENGTH_SHORT).show()
@@ -72,8 +85,17 @@ class DouyinCaptureActivity : Activity() {
             return
         }
 
+        hookScript = buildHookJs(targetId)
+
         buildUi()
         setupWebView()
+
+        // 让用户一眼看到「正在找哪一条」，并在需要时手动点播放
+        statusView.text = if (targetId.isNotBlank()) {
+            getString(R.string.douyin_capture_status_target, targetId)
+        } else {
+            getString(R.string.douyin_capture_status_unverified)
+        }
 
         if (cookie.isNotBlank()) {
             listOf(".douyin.com", ".iesdouyin.com", "www.douyin.com").forEach { domain ->
@@ -274,7 +296,7 @@ class DouyinCaptureActivity : Activity() {
                     if (res.code >= 400 || res.body.isBlank()) return null
 
                     mainDocIntercepted = true
-                    val patched = injectHook(res.body)
+                    val patched = injectHook(res.body, hookScript)
                     runOnUiThread {
                         statusView.text = getString(R.string.douyin_capture_status_loading)
                     }
@@ -294,13 +316,13 @@ class DouyinCaptureActivity : Activity() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 // 手段 2：再注入一次
-                view?.evaluateJavascript(HOOK_JS, null)
-                statusView.text = getString(R.string.douyin_capture_status_loading)
+                view?.evaluateJavascript(hookScript, null)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                view?.evaluateJavascript(HOOK_JS, null)
+                // 不覆盖状态栏文案：它此时可能正在提示「属于其它作品，已忽略」
+                view?.evaluateJavascript(hookScript, null)
             }
         }
     }
@@ -348,27 +370,81 @@ class DouyinCaptureActivity : Activity() {
                 return@evaluateJavascript
             }
 
+            // ── 通道 1：详情接口响应 ──
+            // 必须校验 aweme_id：抖音 PC 页是信息流、会自动连播推荐视频，
+            // 先到的响应很可能属于**别的**作品 —— 这正是「下载到的不是这条视频」的成因。
             val detail = payload.optClean("detail")
             if (detail.startsWith("{")) {
-                finishWithResult(detail, "接口")
-                onDone(true)
-                return@evaluateJavascript
+                when (verifyAwemeId(detail)) {
+                    Match.OK -> {
+                        finishWithResult(detail, "接口")
+                        onDone(true)
+                        return@evaluateJavascript
+                    }
+                    Match.OTHER -> {
+                        val got = payload.optClean("seen").ifBlank { "未知" }
+                        statusView.text = getString(R.string.douyin_capture_status_mismatch, got)
+                        onDone(false)
+                        return@evaluateJavascript
+                    }
+                    Match.UNKNOWN -> {
+                        // 响应里没有 aweme_id，无法判定，按可用处理（总比拒绝好）
+                        finishWithResult(detail, "接口")
+                        onDone(true)
+                        return@evaluateJavascript
+                    }
+                }
             }
 
+            // ── 通道 2：页面 DOM 兜底 ──
+            // 仅当页面地址仍含目标 id 时才接受：连播之后 location 会变成下一条作品，
+            // 那时 DOM 里的 video 已经不是用户要的那条。
             val videoSrc = payload.optClean("videoSrc")
-            if (videoSrc.startsWith("http")) {
+            val curUrl = payload.optClean("url")
+            if (videoSrc.startsWith("http") && domAccepts(curUrl)) {
                 finishWithResult(synthesizeAweme(payload), "页面")
                 onDone(true)
                 return@evaluateJavascript
             }
 
-            statusView.text = if (payload.optClean("url").isNotBlank()) {
-                getString(R.string.douyin_capture_status_waiting)
-            } else {
-                getString(R.string.douyin_capture_status_loading)
+            statusView.text = when {
+                targetId.isBlank() -> getString(R.string.douyin_capture_status_unverified)
+                curUrl.isNotBlank() && !curUrl.contains(targetId) ->
+                    getString(R.string.douyin_capture_status_mismatch, "页面已跳转")
+                else -> getString(R.string.douyin_capture_status_target, targetId)
             }
             onDone(false)
         }
+    }
+
+    private enum class Match { OK, OTHER, UNKNOWN }
+
+    /** 校验捕获到的详情是否就是目标作品 */
+    private fun verifyAwemeId(detailJson: String): Match {
+        if (targetId.isBlank()) return Match.OK   // 无目标 id 可比对
+        val id = extractAwemeId(detailJson)
+        if (id.isBlank()) return Match.UNKNOWN    // 响应里取不到 id，无法判定
+        return if (id == targetId) Match.OK else Match.OTHER
+    }
+
+    /** 从详情 JSON 取 aweme_id，兼容 `aweme_detail.aweme_id` 嵌套结构 */
+    private fun extractAwemeId(detailJson: String): String = try {
+        val o = JSONObject(detailJson)
+        val direct = o.optString("aweme_id")
+        if (direct.isNotBlank() && direct != "null") {
+            direct
+        } else {
+            val nested = o.optJSONObject("aweme_detail")?.optString("aweme_id").orEmpty()
+            if (nested == "null") "" else nested
+        }
+    } catch (e: Exception) {
+        ""
+    }
+
+    /** DOM 兜底是否可信：页面地址必须仍指向目标作品 */
+    private fun domAccepts(curUrl: String): Boolean {
+        if (targetId.isBlank()) return true
+        return curUrl.contains(targetId)
     }
 
     /**
@@ -456,6 +532,9 @@ class DouyinCaptureActivity : Activity() {
         const val EXTRA_COOKIE = "extra_cookie"
         const val EXTRA_SOURCE = "extra_source"
 
+        /** 目标作品的 aweme_id（用于校验抓到的是不是这一条） */
+        const val EXTRA_AWEME_ID = "extra_aweme_id"
+
         private const val DESKTOP_UA =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
@@ -471,28 +550,53 @@ class DouyinCaptureActivity : Activity() {
         private val COLOR_BRAND_B = 0xFFFF7A4D.toInt()
 
         /** 把钩子插到 <head> 最前面，确保先于页面自身脚本执行 */
-        private fun injectHook(html: String): String {
-            val script = "<script>$HOOK_JS</script>"
+        private fun injectHook(html: String, script: String): String {
+            val tag = "<script>$script</script>"
             val headIdx = html.indexOf("<head>")
             if (headIdx >= 0) {
-                return html.substring(0, headIdx + 6) + script + html.substring(headIdx + 6)
+                return html.substring(0, headIdx + 6) + tag + html.substring(headIdx + 6)
             }
             val htmlIdx = html.indexOf("<html")
             if (htmlIdx >= 0) {
                 val gt = html.indexOf('>', htmlIdx)
-                if (gt >= 0) return html.substring(0, gt + 1) + script + html.substring(gt + 1)
+                if (gt >= 0) return html.substring(0, gt + 1) + tag + html.substring(gt + 1)
             }
-            return script + html
+            return tag + html
         }
 
-        private val HOOK_JS = """
+        /**
+         * 生成注入脚本，并把**目标 aweme_id** 绑进去。
+         *
+         * 为什么必须绑 id：抖音 PC 页是信息流，会自动连播推荐视频，页面里可能先后
+         * 出现多条 `/aweme/v1/web/aweme/detail/` 响应。钩子按请求 URL 上的
+         * `aweme_id` 参数分别登记，只把**匹配目标**的那一条暴露给 Kotlin 侧，
+         * 从而避免抓到推荐视频（这正是「下载到的不是这条视频」的成因）。
+         *
+         * `__aqSeen` 记录见过的所有 id，用于在界面上解释「为什么还没成功」。
+         */
+        private fun buildHookJs(targetId: String): String {
+            // aweme_id 是纯数字，这里仍剔除引号，避免被拼接进 JS 字面量时破坏语法
+            val literal = if (targetId.isBlank()) "''" else "'" + targetId.replace("'", "") + "'"
+            return """
             (function(){
               try{
                 if(window.__aqHooked){return 'already';}
                 window.__aqHooked=true;
-                window.__aqDetail=window.__aqDetail||null;
-                var isDetail=function(u){return !!u&&u.indexOf('/aweme/v1/web/aweme/detail/')>=0;};
-                var oo=XMLHttpRequest.prototype.open, os=XMLHttpRequest.prototype.send;
+                window.__aqTarget=window.__aqTarget||'';
+                window.__aqMatched=window.__aqMatched||'';
+                window.__aqSeen=window.__aqSeen||[];
+                var TARGET=$literal;
+                var idOf=function(u){try{var m=String(u).match(/[?&]aweme_id=([0-9]{10,})/);return m?m[1]:'';}catch(e){return '';}};
+                var isDetail=function(u){return !!u&&String(u).indexOf('/aweme/v1/web/aweme/detail/')>=0;};
+                var take=function(u,t){
+                  try{
+                    var id=idOf(u);
+                    if(id&&window.__aqSeen.indexOf(id)<0){window.__aqSeen.push(id);}
+                    if(!TARGET||id===TARGET){window.__aqTarget=t;window.__aqMatched=id||'';}
+                  }catch(e){}
+                };
+                var oo=XMLHttpRequest.prototype.open;
+                var os=XMLHttpRequest.prototype.send;
                 XMLHttpRequest.prototype.open=function(m,u){try{this.__aqUrl=u;}catch(e){}return oo.apply(this,arguments);};
                 XMLHttpRequest.prototype.send=function(){
                   var self=this;
@@ -500,7 +604,7 @@ class DouyinCaptureActivity : Activity() {
                     try{
                       if(isDetail(self.__aqUrl)){
                         var t=(self.responseType===''||self.responseType==='text')?self.responseText:null;
-                        if(t){window.__aqDetail=t;}
+                        if(t){take(self.__aqUrl,t);}
                       }
                     }catch(e){}
                   });
@@ -514,7 +618,7 @@ class DouyinCaptureActivity : Activity() {
                     try{
                       if(isDetail(u)){
                         p.then(function(r){
-                          try{r.clone().text().then(function(t){window.__aqDetail=t;});}catch(e){}
+                          try{r.clone().text().then(function(t){take(u,t);});}catch(e){}
                         });
                       }
                     }catch(e){}
@@ -524,20 +628,42 @@ class DouyinCaptureActivity : Activity() {
                 return 'hooked';
               }catch(e){return 'err';}
             })();
-        """.trimIndent()
+            """.trimIndent()
+        }
 
+        /**
+         * 读取页面状态。
+         *
+         * 两处修正：
+         *  1) `detail` 必须用 `||''` 兜底 —— 若直接给 `window.__aqTarget`，
+         *     未捕获时该字段是 JSON null，经 evaluateJavascript 回传后 Kotlin 侧
+         *     `optString()` 会读到字符串 `"null"`（不是空串），被当成有效作品 JSON。
+         *  2) video 不能只取 `document.querySelector('video')` —— 抖音信息流页上
+         *     会有多个 video 元素，第一个未必是正在播放的那条。改为遍历全部、
+         *     取**可见且面积最大**的那个，并以首个非空 src 兜底。
+         */
         private val READ_JS = """
             (function(){
               try{
-                var out={detail:'',videoSrc:'',title:'',cover:'',url:''};
+                var out={detail:'',matched:'',seen:'',videoSrc:'',title:'',cover:'',url:''};
                 out.url=(location&&location.href)?location.href:'';
-                // 必须用 ||'' 兜底：若写成 out.detail=window.__aqDetail，
-                // 未捕获时该字段是 JSON null，经 evaluateJavascript 回传后
-                // Kotlin 侧 optString() 会读到字符串 "null"（而非空串），
-                // 从而被当成有效作品 JSON 交给解析器，报出难以定位的错误。
-                out.detail=(window.__aqDetail||'');
-                var v=document.querySelector('video');
-                if(v){out.videoSrc=v.currentSrc||v.src||'';var p=v.getAttribute('poster');if(p){out.cover=p;}}
+                out.detail=(window.__aqTarget||'');
+                out.matched=(window.__aqMatched||'');
+                out.seen=(window.__aqSeen||[]).join(',');
+                var best='',bestArea=0,fallback='';
+                var vs=document.querySelectorAll('video');
+                for(var i=0;i<vs.length;i++){
+                  var v=vs[i];
+                  var s=v.currentSrc||v.src||'';
+                  if(!s){continue;}
+                  if(!fallback){fallback=s;}
+                  var r=v.getBoundingClientRect();
+                  var area=r.width*r.height;
+                  if(area>0&&r.top<window.innerHeight&&r.bottom>0&&area>bestArea){bestArea=area;best=s;}
+                }
+                out.videoSrc=best||fallback;
+                var v0=document.querySelector('video');
+                if(v0){var p=v0.getAttribute('poster');if(p){out.cover=p;}}
                 var ogt=document.querySelector('meta[property="og:title"]');
                 out.title=(ogt&&ogt.content)||document.title||'';
                 var ogi=document.querySelector('meta[property="og:image"]');

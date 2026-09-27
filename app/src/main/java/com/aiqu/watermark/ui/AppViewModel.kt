@@ -57,8 +57,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var toastMessage by mutableStateOf("")
         private set
 
-    /** 需要启动抖音浏览器解析时，UI 读取此值并拉起 DouyinCaptureActivity */
-    var pendingDouyinUrl by mutableStateOf<String?>(null)
+    /**
+     * 抖音浏览器解析请求。
+     *
+     * url 与 awemeId 必须**一起**交给抓取页，所以打包成一个状态而不是两个独立变量 ——
+     * 分成两个 `mutableStateOf` 时，UI 侧读取可能拿到尚未刷新的另一半（时序不定）。
+     *
+     * awemeId 可能为空（短链还原失败）。有值时抓取页会**校验**抓到的确实是这一条：
+     * 抖音 PC 页是信息流、会自动连播推荐视频，不校验就会抓到下一条（实测发生过）。
+     */
+    data class DouyinBrowserRequest(val url: String, val awemeId: String)
+
+    var pendingDouyin by mutableStateOf<DouyinBrowserRequest?>(null)
         private set
 
     /**
@@ -142,6 +152,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * 抖音：优先用已配置的第三方接口；未配置或失败则回退到真实浏览器。
      * 浏览器通道是可靠的默认方案，且零成本。
+     *
+     * 拉起浏览器前**必须先把 aweme_id 还原出来**并让 WebView 直接加载
+     * `https://www.douyin.com/video/{id}`。原因：抖音 PC 页是信息流，
+     * 会连播推荐视频；若只给短链或不给目标 id，抓取页无法判断
+     * 页面当前播放的是不是用户要的那一条，就会抓到推荐视频（实测发生过）。
      */
     private fun startDouyin(text: String) {
         douyinSourceRaw = text
@@ -155,7 +170,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
         val providerUrl = settings.douyinProviderUrl
         if (providerUrl.isBlank()) {
-            pendingDouyinUrl = shareUrl
+            launchDouyinBrowser(shareUrl)
             return
         }
 
@@ -171,13 +186,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 parsing = false
                 error = "第三方接口未成功：${e.message ?: "未知错误"}"
                 errorHint = "正在改用本机浏览器解析…"
-                pendingDouyinUrl = shareUrl
+                launchDouyinBrowser(shareUrl)
             }
         }
     }
 
+    /** 还原 aweme_id 后再拉起浏览器：短链还原需要联网，故放在 IO 线程 */
+    private fun launchDouyinBrowser(shareUrl: String) {
+        viewModelScope.launch {
+            val id = withContext(Dispatchers.IO) {
+                try {
+                    DouyinParser.resolveAwemeId(shareUrl)
+                } catch (e: Exception) {
+                    ""
+                }
+            }
+            // 拿到 id 就给规范地址，页面必定打开的是这条作品；拿不到则退回原链接
+            pendingDouyin = DouyinBrowserRequest(
+                url = if (id.isNotBlank()) "https://www.douyin.com/video/$id" else shareUrl,
+                awemeId = id,
+            )
+        }
+    }
+
     fun consumePendingDouyin() {
-        pendingDouyinUrl = null
+        pendingDouyin = null
     }
 
     /** 浏览器解析返回后调用 */

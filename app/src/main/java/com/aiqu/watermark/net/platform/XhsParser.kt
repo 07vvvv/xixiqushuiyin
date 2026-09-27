@@ -7,6 +7,7 @@ import com.aiqu.watermark.data.model.ParsedMedia
 import com.aiqu.watermark.data.model.Platform
 import com.aiqu.watermark.data.model.VideoInfo
 import com.aiqu.watermark.net.Http
+import com.aiqu.watermark.net.Platforms
 import org.json.JSONObject
 
 /**
@@ -30,22 +31,89 @@ object XhsParser {
     private const val VIDEO_HOST = "https://sns-video-qc.xhscdn.com/"
 
     private val LINK_RE = Regex(
-        """https?://(?:www\.)?(?:xiaohongshu\.com/[^\s"'<>，。、）]+|xhslink\.com/[^\s"'<>，。、）]+)""",
+        """https?://(?:www\.)?(?:xiaohongshu\.com/[!-~]*|xhslink\.com/[!-~]*)""",
         RegexOption.IGNORE_CASE,
     )
     private val NOTE_ID_RE = Regex("/(?:explore|discovery/item)/([0-9a-fA-F]{24})")
 
+    /** 兜底：从页面文本里找 noteId 字段（短链返回 HTML 中继页时会用到） */
+    private val NOTE_ID_FIELD_RE = Regex(
+        """["']?note_?[Ii]d["']?\s*[:=]\s*["']?([0-9a-fA-F]{24})""",
+    )
+
+    private fun findNoteId(text: String): String? {
+        NOTE_ID_RE.find(text)?.let { return it.groupValues[1] }
+        NOTE_ID_FIELD_RE.find(text)?.let { return it.groupValues[1] }
+        return null
+    }
+
     fun parse(rawUrl: String, cookie: String): ParsedMedia {
         val steps = mutableListOf<String>()
-        var url = LINK_RE.find(rawUrl)?.value ?: rawUrl.trim()
+        try {
+            return parseInner(rawUrl, cookie, steps)
+        } catch (e: ParseException) {
+            // 把诊断步骤拼进错误信息。这些步骤记录了「链接还原到哪个地址、页面 HTTP 状态、
+            // 是否带 xsec_token、状态里有没有笔记对象」等关键事实 ——
+            // 平台改版时，这是唯一能直接定位问题的信息（比一句「解析失败」有用得多）。
+            val head = e.message ?: "小红书解析失败"
+            throw ParseException(head + "【诊断】" + steps.joinToString(" | "))
+        }
+    }
 
-        if (Regex("xhslink\\.com", RegexOption.IGNORE_CASE).containsMatchIn(url)) {
+    private fun parseInner(
+        rawUrl: String,
+        cookie: String,
+        steps: MutableList<String>,
+    ): ParsedMedia {
+        var url = LINK_RE.find(rawUrl)?.value?.trim() ?: rawUrl.trim()
+
+        // 必须升级为 https：分享链接普遍是 http://xhslink.com/...，
+        // 而 Android 9+ 默认禁止明文流量，network_security_config 也未放开该域名，
+        // 请求会直接抛异常 → 短链还原失败 → 拿不到笔记 ID（表现为"未能识别小红书笔记 ID"）。
+        url = Platforms.toHttps(url)
+
+        var noteId = findNoteId(url)
+
+        if (noteId == null) {
+            val before = url
             url = Http.resolveRedirect(url, ua = Http.MOBILE_UA, referer = REFERER)
-            steps += "短链还原 → ${url.take(120)}"
+            steps += "还原链接：$before → ${url.take(160)}"
+            // 移动端 UA 有时会拿到 App 深链（xhsdiscover://...）而非网页地址，
+            // 这种情况换桌面端 UA 再还原一次——我们只需要拿到网页 URL 与 xsec_token。
+            if (!url.startsWith("http", ignoreCase = true)) {
+                val byDesktop = Http.resolveRedirect(url = before, ua = Http.PC_UA, referer = REFERER)
+                steps += "移动端 UA 还原到非网页地址，改用桌面端 UA：${byDesktop.take(160)}"
+                if (byDesktop.startsWith("http", ignoreCase = true)) url = byDesktop
+            }
+            noteId = findNoteId(url)
         }
 
-        val noteId = NOTE_ID_RE.find(url)?.groupValues?.get(1)
-            ?: throw ParseException("未能识别小红书笔记 ID，请使用 App 内「分享 → 复制链接」得到的链接")
+        // 仍是短链 / 中继页（部分短链返回 HTML 而非 302）：直接把页面抓下来找 noteId
+        if (noteId == null) {
+            val probe = try {
+                Http.getText(url, ua = Http.MOBILE_UA, referer = REFERER, cookie = cookie)
+            } catch (e: Exception) {
+                null
+            }
+            if (probe != null) {
+                steps += "HTML 兜底：HTTP ${probe.code}，长度 ${probe.body.length}，最终地址 ${probe.finalUrl.take(160)}"
+                noteId = findNoteId(probe.finalUrl) ?: findNoteId(probe.body)
+                if (noteId != null && probe.finalUrl != url) url = probe.finalUrl
+            }
+        }
+
+        if (noteId == null) {
+            throw ParseException(
+                "未能识别小红书笔记 ID。当前解析到的链接是：${url.take(160)}。" +
+                    "若它看起来仍是短链，说明短链还原被拦截（请检查网络），" +
+                    "或改用 App 内「分享 → 复制链接」重新获取。"
+            )
+        }
+
+        // 不写成 "${url.contains("xsec_token=")}" —— 字符串模板里嵌双引号字面量
+        // 在不同 Kotlin 版本上的支持存在差异，先算成布尔值最稳。
+        val hasToken = url.contains("xsec_token=")
+        steps += "noteId=$noteId，含 xsec_token=$hasToken"
 
         // 关键：必须移动端 UA
         val res = Http.getText(url, ua = Http.MOBILE_UA, referer = REFERER, cookie = cookie)

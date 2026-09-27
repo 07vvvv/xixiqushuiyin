@@ -150,6 +150,21 @@ object DouyinParser {
         val music = aweme.optJSONObject("music")
         val desc = aweme.optString("desc")
 
+        // 记录 aweme_id：用户报「下载到的不是这条」时，这是唯一能对照的硬证据
+        val rawId = aweme.optString("aweme_id")
+        val awemeId = if (rawId == "null") "" else rawId
+        if (awemeId.isNotBlank()) steps += "aweme_id=$awemeId"
+
+        // 不在字符串模板里嵌字符串字面量（如 ${x.ifBlank { "未知" }}）：不同 Kotlin
+        // 版本对这种写法的支持存在差异，先算成局部变量最稳。
+        val idLabel = if (awemeId.isBlank()) "未知" else awemeId
+        if (videoUrl.isBlank() && images.isEmpty()) {
+            throw ParseException(
+                "抓到作品（aweme_id=$idLabel）但其中没有可用的视频或图片地址。" +
+                    "可能是该作品为图文/受限内容，或抖音页面结构已变化。标题：${desc.take(40)}"
+            )
+        }
+
         return ParsedMedia(
             platform = Platform.DOUYIN,
             type = when {

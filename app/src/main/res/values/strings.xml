@@ -8,6 +8,9 @@
     <string name="douyin_capture_status_loading">正在加载页面…</string>
     <string name="douyin_capture_status_waiting">正在等待播放地址…</string>
     <string name="douyin_capture_status_found">已捕获地址</string>
+    <string name="douyin_capture_status_target">目标作品 ID：%1$s。请在页面上点一下这条视频播放，以便抖音去请求它的详情。</string>
+    <string name="douyin_capture_status_mismatch">页面当前的详情属于其它作品（%1$s），已忽略并继续等待目标作品。请点一下目标视频播放。</string>
+    <string name="douyin_capture_status_unverified">未拿到作品 ID，无法校验是否为目标视频。取到地址后请自行确认内容。</string>
     <string name="douyin_capture_hint">页面由系统浏览器加载，抖音自己的 SDK 会生成合法请求，应用只读取结果。若出现验证码或需要点击播放，手动完成后会自动继续。</string>
     <string name="douyin_capture_manual">我已看到视频，取地址</string>
     <string name="douyin_capture_cancel">取消</string>

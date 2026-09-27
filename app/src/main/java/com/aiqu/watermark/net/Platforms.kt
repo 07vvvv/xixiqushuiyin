@@ -5,7 +5,19 @@ import com.aiqu.watermark.data.model.Platform
 /** 平台识别与通用地址工具 */
 object Platforms {
 
-    private val URL_RE = Regex("""https?://[^\s"'<>，。、）】]+""")
+    /**
+     * 从整段分享文案里抽出第一个链接。
+     *
+     * 字符类用 `[!-~]`（可打印 ASCII，0x21–0x7E）而不是「排除空白与引号」：
+     * 分享文案常把链接紧贴汉字或表情（如 `http://xhslink.com/a/xxxx复制本条信息`、
+     * `...xxxx😆`），只排除空白会把后面的汉字/表情一起吃进 URL。
+     * URL 本身就是 ASCII（中文会被百分号编码），因此只收 ASCII 既简单又不会误伤。
+     *
+     * 注意：这里**不做** http→https 升级。是否升级由各平台适配器决定 ——
+     * 例如小红书短链必须升级（明文会被 Android 拦），
+     * 而抖音播放地址反而是 https 优先、原始 http 作备用。
+     */
+    private val URL_RE = Regex("""https?://[!-~]+""", RegexOption.IGNORE_CASE)
     private val BV_RE = Regex("BV[0-9A-Za-z]{10}")
 
     /** 从整段分享文案里抽出第一个链接 */
