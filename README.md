@@ -127,6 +127,50 @@ hero 渐变（通栏，含状态栏）
 
 ## 构建步骤
 
+### 先上传到 GitHub
+
+本地仓库已经初始化并完成首次提交（分支 `main`），你只需要在网页上建一个**空仓库**再推上去。
+
+**第 1 步 · 建空仓库**
+
+打开 <https://github.com/new>：
+
+- **Repository name**：随意，例如 `aiqu-watermark`
+- **Public / Private**：建议选 **Private**。私有仓库每月有 2000 分钟 Actions 免费额度，
+  每次 Android 构建约 3–6 分钟，够用几百次；而且这类工具放公开仓库没必要。
+- **不要**勾选 "Add a README" / "Add .gitignore" / "Choose a license" ——
+  必须建成**空仓库**，否则推送会因为两边都有提交而被拒绝。
+
+**第 2 步 · 关联并推送**（在 `D:\work-run\aq-watermark-android` 下执行）
+
+```bash
+git remote add origin https://github.com/<你的用户名>/<仓库名>.git
+git push -u origin main
+```
+
+首次推送会弹出 **Git Credential Manager** 的浏览器登录窗口（本机已安装），
+登录一次即可，之后不再需要输密码。
+
+> 如果它改问账号密码：GitHub 已不接受账户密码，需要到
+> Settings → Developer settings → Personal access tokens 生成一个经典 token，
+> 权限勾 **`repo`** 并且**必须**勾 **`workflow`** —— 因为仓库里有 `.github/workflows/` 文件，
+> 少了 `workflow` 权限会被拒绝推送。
+
+**第 3 步 · 取 APK**
+
+推送完成后打开仓库的 **Actions** 页，会看到 `Build APK` 正在运行（也可在 Actions 页点
+`Run workflow` 手动触发）。构建结束、出现绿色对勾后，进入该次运行，
+在页面底部的 **Artifacts** 里下载 `aiqu-watermark-apk`，内含：
+
+- `aiqu-watermark-release.apk` ← 日常安装用这个
+- `aiqu-watermark-debug.apk` ← 排查问题用
+
+失败时同一位置会有 `build-reports` 工件，里面的编译日志可以直接发给我。
+
+**关于工程根目录**：仓库根目录必须正好是 `settings.gradle.kts` 所在这一层。
+本目录已经就是这个结构，直接推即可。另外 `.gitattributes` 已把 `gradlew` 锁定为 LF 换行，
+避免 Linux runner 上报 `bad interpreter: /bin/sh^M`。
+
 ### 方式 A：GitHub Actions（推荐，无需本机装 Android SDK）
 
 工程已包含 Gradle Wrapper 与工作流 `.github/workflows/build-apk.yml`。
